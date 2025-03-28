@@ -2,86 +2,124 @@ import pandas as pd
 import numpy as np
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import MinMaxScaler
-from tensorflow.keras.models import Sequential # type: ignore
-from tensorflow.keras.layers import Dense # type: ignore
-from sklearn.metrics import mean_squared_error, mean_absolute_error, r2_score
+from tensorflow.keras.models import Sequential
+from tensorflow.keras.layers import Dense
+from scipy.optimize import minimize
 
-# Bước 1: Đọc dữ liệu từ file CSV
+# ================== Bước 1: Đọc dữ liệu và xây dựng mô hình mạng nơ-ron ==================
+# Đọc dữ liệu từ file CSV
 data = pd.read_csv('data.csv')
 
+# Kiểm tra cấu trúc dữ liệu
+print("Dữ liệu ban đầu:")
+print(data.head())
 
-# Bước 2: Tự chọn các trường để huấn luyện và dự đoán
-selected_features = ['I', 'Ton', 'Toff', 'Wire Feed', 'MRR', 'SR']  # Các cột để huấn luyện
-target_column = 'Overcut'  # Cột để dự đoán
+# Chọn các cột đầu vào và đầu ra
+selected_features = ['I', 'Ton', 'Toff', 'Wire Feed']  # Các cột đầu vào
+targets = ['MRR', 'SR', 'Overcut']  # Các cột đầu ra
 
 # Tách biến đầu vào (X) và biến đầu ra (y)
-X = data[selected_features].values  # Lấy các cột được chọn làm đầu vào
-y = data[target_column].values      # Lấy cột Overcut làm đầu ra
+X = data[selected_features].values  # Lấy các cột đầu vào
+y = data[targets].values            # Lấy các cột đầu ra
 
 # Chuẩn hóa dữ liệu đầu vào
-scaler = MinMaxScaler()
-X_scaled = scaler.fit_transform(X)
+scaler_X = MinMaxScaler()
+scaler_y = MinMaxScaler()
+
+X_scaled = scaler_X.fit_transform(X)
+y_scaled = scaler_y.fit_transform(y)
 
 # Chia dữ liệu thành tập huấn luyện và tập kiểm thử
-X_train, X_test, y_train, y_test = train_test_split(X_scaled, y, test_size=0.2, random_state=42)
+X_train, X_test, y_train, y_test = train_test_split(X_scaled, y_scaled, test_size=0.2, random_state=42)
 
-# Bước 3: Xây dựng mạng nơ-ron
-model = Sequential()
+# Xây dựng mô hình mạng nơ-ron cho từng mục tiêu
+models = {}
+for i, target in enumerate(targets):
+    model = Sequential()
+    model.add(Dense(10, input_dim=X_train.shape[1], activation='relu'))  # Lớp ẩn với 10 nơ-ron
+    model.add(Dense(1, activation='linear'))  # Lớp đầu ra với 1 nơ-ron
+    model.compile(optimizer='adam', loss='mean_squared_error')
+    
+    # Huấn luyện mô hình
+    model.fit(X_train, y_train[:, i], epochs=200, batch_size=8, verbose=0)
+    models[target] = model
 
-# Lớp ẩn với 10 nơ-ron và hàm kích hoạt ReLU
-model.add(Dense(10, input_dim=X_train.shape[1], activation='relu'))
+# Đánh giá mô hình
+for target in targets:
+    y_pred_scaled = models[target].predict(X_test).flatten()
+    y_pred = scaler_y.inverse_transform(np.column_stack([y_pred_scaled] * len(targets)))[:, targets.index(target)]
+    y_true = scaler_y.inverse_transform(y_test)[:, targets.index(target)]
+    
+    mse = np.mean((y_true - y_pred) ** 2)
+    print(f"{target} - Mean Squared Error: {mse}")
 
-# Lớp đầu ra với 1 nơ-ron và hàm kích hoạt tuyến tính
-model.add(Dense(1, activation='linear'))
+# ================== Bước 2: Định nghĩa hàm mục tiêu ==================
+def objective_function(params, models, scaler_X, scaler_y):
+    """
+    Hàm mục tiêu để tối ưu hóa.
+    params: Các giá trị của I, Ton, Toff, Wire Feed (biến đầu vào).
+    models: Các mô hình đã huấn luyện cho MRR, SR, Overcut.
+    scaler_X, scaler_y: Scaler để chuẩn hóa và khôi phục dữ liệu.
+    """
+    # Chuẩn hóa tham số đầu vào
+    params_scaled = scaler_X.transform(np.array(params).reshape(1, -1))
+    
+    # Dự đoán giá trị của MRR, SR, Overcut
+    mrr_scaled = models['MRR'].predict(params_scaled)[0]
+    sr_scaled = models['SR'].predict(params_scaled)[0]
+    overcut_scaled = models['Overcut'].predict(params_scaled)[0]
+    
+    # Khôi phục giá trị về phạm vi ban đầu
+    predictions_scaled = np.column_stack([mrr_scaled, sr_scaled, overcut_scaled])
+    predictions = scaler_y.inverse_transform(predictions_scaled)
+    mrr, sr, overcut = predictions[0]
+    
+    # Định nghĩa hàm mục tiêu (ví dụ: MRR lớn nhất, SR và Overcut nhỏ nhất)
+    weight_mrr = 1.0  # Trọng số cho MRR
+    weight_sr = -1.0  # Trọng số cho SR (tối thiểu hóa)
+    weight_overcut = -1.0  # Trọng số cho Overcut (tối thiểu hóa)
+    
+    # Giá trị hàm mục tiêu
+    objective_value = (
+        weight_mrr * mrr +
+        weight_sr * sr +
+        weight_overcut * overcut
+    )
+    return -objective_value  # Nhớ thêm dấu trừ vì optimizer tìm giá trị nhỏ nhất
 
-# Biên dịch mô hình
-model.compile(optimizer='adam', loss='mean_squared_error')
+# ================== Bước 3: Sử dụng thuật toán tối ưu hóa ==================
+# Giới hạn giá trị cho các biến đầu vào (giả sử phạm vi dựa trên dữ liệu)
+bounds = [
+    (1, 10),    # Phạm vi cho I
+    (100, 150), # Phạm vi cho Ton
+    (20, 60),   # Phạm vi cho Toff
+    (1, 15)     # Phạm vi cho Wire Feed
+]
 
-# Huấn luyện mô hình
-history = model.fit(X_train, y_train, epochs=200, batch_size=8, verbose=1, validation_split=0.2)
+# Khởi tạo giá trị ban đầu ngẫu nhiên
+initial_guess = [np.mean(bound) for bound in bounds]
 
-# Bước 4: Đánh giá mô hình
-# Dự đoán trên tập kiểm thử
-y_pred = model.predict(X_test).flatten()
+# Tối ưu hóa
+result = minimize(
+    lambda params: objective_function(params, models, scaler_X, scaler_y),
+    initial_guess,
+    bounds=bounds,
+    method='L-BFGS-B'
+)
 
-# Tính các chỉ số đánh giá
-mse = mean_squared_error(y_test, y_pred)
-mae = mean_absolute_error(y_test, y_pred)
-r2 = r2_score(y_test, y_pred)
+# Hiển thị kết quả tối ưu
+optimal_params = result.x
+print("\nGiá trị tối ưu cho các biến đầu vào:")
+print(f"I: {optimal_params[0]:.2f}, Ton: {optimal_params[1]:.2f}, Toff: {optimal_params[2]:.2f}, Wire Feed: {optimal_params[3]:.2f}")
 
-print(f"Mean Squared Error (MSE): {mse}")
-print(f"Mean Absolute Error (MAE): {mae}")
-print(f"R-squared (R²): {r2}")
+# Dự đoán giá trị của MRR, SR, Overcut với các tham số tối ưu
+optimal_mrr, optimal_sr, optimal_overcut = scaler_y.inverse_transform(
+    np.column_stack([
+        models['MRR'].predict(scaler_X.transform(np.array(optimal_params).reshape(1, -1))),
+        models['SR'].predict(scaler_X.transform(np.array(optimal_params).reshape(1, -1))),
+        models['Overcut'].predict(scaler_X.transform(np.array(optimal_params).reshape(1, -1)))
+    ])
+)[0]
 
-# Hiển thị kết quả dự đoán trên tập kiểm thử
-results = pd.DataFrame({'Actual': y_test, 'Predicted': y_pred})
-print("Kết quả dự đoán trên tập kiểm thử:")
-print(results)
-
-# ================== PHẦN BỔ SUNG: DỰ ĐOÁN TỪ FILE TEST.CSV ==================
-# Bước 5: Đọc dữ liệu kiểm thử từ file test.csv
-test_data = pd.read_csv('test.csv')
-
-# Kiểm tra cấu trúc dữ liệu kiểm thử
-print("\nDữ liệu kiểm thử:")
-print(test_data.head())
-
-# Lấy các cột tương ứng với selected_features từ file test.csv
-X_test_input = test_data[selected_features].values
-
-# Chuẩn hóa dữ liệu kiểm thử sử dụng cùng một scaler
-X_test_input_scaled = scaler.transform(X_test_input)
-
-# Dự đoán kết quả
-y_test_pred = model.predict(X_test_input_scaled).flatten()
-
-# Thêm kết quả dự đoán vào DataFrame kiểm thử
-test_data['Predicted_Overcut'] = y_test_pred
-
-# Hiển thị kết quả dự đoán
-print("\nKết quả dự đoán từ file test.csv:")
-print(test_data[['No'] + selected_features + ['Predicted_Overcut']])
-
-# Lưu kết quả vào file CSV
-test_data.to_csv('predicted_results.csv', index=False)
-print("\nKết quả đã được lưu vào file 'predicted_results.csv'.")
+print("\nKết quả dự đoán với các tham số tối ưu:")
+print(f"MRR: {optimal_mrr:.4f}, SR: {optimal_sr:.4f}, Overcut: {optimal_overcut:.4f}")
