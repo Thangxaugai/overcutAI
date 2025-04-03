@@ -9,7 +9,7 @@ from deap import base, creator, tools, algorithms
 import random
 
 # Bước 1: Đọc dữ liệu
-data = pd.read_csv('data.csv')
+data = pd.read_csv('data copy.csv')
 
 # Tách dữ liệu thành input (X) và output (y)
 X = data[['I', 'Ton', 'Toff', 'Wire Feed']].values
@@ -46,9 +46,9 @@ mae = mean_absolute_error(y_test_original, y_pred)
 r2 = r2_score(y_test_original, y_pred, multioutput='uniform_average')
 mse = mean_squared_error(y_test_original, y_pred)
 
-print(f"Mean Absolute Error: {mae}")
-print(f"R-Square: {r2}")
-print(f"Standard Error (MSE): {mse}")
+# print(f"Mean Absolute Error: {mae}")
+# print(f"R-Square: {r2}")
+# print(f"Standard Error (MSE): {mse}")
 
 # Bước 5: Xây dựng hàm mục tiêu cho GA
 def objective_function(params):
@@ -100,5 +100,12 @@ best_ind = tools.selBest(population, k=1)[0]
 optimal_params = best_ind
 optimal_fitness = best_ind.fitness.values[0]
 
+print(f"Mean Absolute Error: {mae}")
+print(f"R-Square: {r2}")
+print(f"Standard Error (MSE): {mse}")
+
+print(f"------")
+
 print("Optimal Parameters:", optimal_params)
 print("Optimal Fitness:", optimal_fitness)
+
