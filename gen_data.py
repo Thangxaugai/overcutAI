@@ -30,7 +30,7 @@ def write_to_csv(filename, data):
         writer.writerows(data)
 
 # Số dòng dữ liệu cần tạo
-num_rows = 1000
+num_rows = 1000000
 
 # Tạo dữ liệu ngẫu nhiên
 random_data = generate_random_data(num_rows)
