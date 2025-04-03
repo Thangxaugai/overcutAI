@@ -9,7 +9,7 @@ from deap import base, creator, tools, algorithms
 import random
 
 # Bước 1: Đọc dữ liệu
-data = pd.read_csv('data copy.csv')
+data = pd.read_csv('random_data.csv')
 
 # Tách dữ liệu thành input (X) và output (y)
 X = data[['I', 'Ton', 'Toff', 'Wire Feed']].values
