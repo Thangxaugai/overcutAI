@@ -267,10 +267,33 @@ for label, bias in bias_values.items():
     print(f"SR = {best_sr:.4f}, MRR = {best_mrr:.2f}, Độ thích nghi = {best_fitness:.4f}")
     print("-" * 50)
 
-# 6. Hiển thị kết quả cuối cùng
-print("\n=== KẾT QUẢ TỐI ƯU HÓA CUỐI CÙNG ===\n")
-results_df = pd.DataFrame(results).T
-print(results_df)
+# 6. In kết quả theo định dạng bảng
+print("\n" + "="*60)
+print("Table 4")
+print("Operating parameters at various bias values.")
+print("="*60)
+
+# Tạo bảng kết quả cho 100% bias và 50% bias
+print("{:<30} {:<30}".format("100% bias on surface finish", "50% bias on surface finish"))
+print("{:<5} {:<15} {:<10} {:<5} {:<15} {:<10}".format("", "Speed", str(int(results["100% bias cho SR"]["Speed"])), "", "Speed", str(int(results["50% bias (cân bằng)"]["Speed"]))))
+print("{:<5} {:<15} {:<10} {:<5} {:<15} {:<10}".format("", "Feed", str(round(results["100% bias cho SR"]["Feed"], 2)), "", "Feed", str(round(results["50% bias (cân bằng)"]["Feed"], 2))))
+print("{:<5} {:<15} {:<10} {:<5} {:<15} {:<10}".format("", "Depth of Cut", str(round(results["100% bias cho SR"]["DOC"], 2)), "", "Depth of Cut", str(round(results["50% bias (cân bằng)"]["DOC"], 2))))
+
+# Tạo bảng kết quả cho 75% bias và 25% bias
+print("{:<30} {:<30}".format("75% bias on surface finish", "25% bias on surface finish"))
+print("{:<5} {:<15} {:<10} {:<5} {:<15} {:<10}".format("", "Speed", str(int(results["75% bias cho SR"]["Speed"])), "", "Speed", str(int(results["25% bias cho SR"]["Speed"]))))
+print("{:<5} {:<15} {:<10} {:<5} {:<15} {:<10}".format("", "Feed", str(round(results["75% bias cho SR"]["Feed"], 2)), "", "Feed", str(round(results["25% bias cho SR"]["Feed"], 2))))
+print("{:<5} {:<15} {:<10} {:<5} {:<15} {:<10}".format("", "Depth of Cut", str(round(results["75% bias cho SR"]["DOC"], 2)), "", "Depth of Cut", str(round(results["25% bias cho SR"]["DOC"], 2))))
+
+print("="*60)
+
+# 7. In kết quả về thông số tối ưu cuối cùng (lựa chọn 25% bias)
+print("\nKết quả tối ưu cuối cùng:")
+print("Thông số tối ưu với bias = 25% (ưu tiên MRR nhưng vẫn quan tâm đến SR):")
+print(f"Tốc độ cắt: {int(results['25% bias cho SR']['Speed'])} m/min")
+print(f"Tốc độ tiến: {results['25% bias cho SR']['Feed']:.2f} mm/rev")
+print(f"Chiều sâu cắt: {results['25% bias cho SR']['DOC']:.2f} mm")
+print(f"Đạt được: SR = {results['25% bias cho SR']['SR']:.2f}, MRR = {results['25% bias cho SR']['MRR']:.2f}")
 
 # 7. Biểu diễn trực quan kết quả
 fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(14, 6))
