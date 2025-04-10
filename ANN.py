@@ -35,201 +35,198 @@ def create_ann_model():
 
 # Khởi tạo và huấn luyện mô hình
 ann_model = create_ann_model()
-history = ann_model.fit(X_train, y_train, epochs=100, batch_size=5, verbose=0, validation_data=(X_test, y_test))
+history = ann_model.fit(X_train, y_train, epochs=10, batch_size=5, verbose=0, validation_data=(X_test, y_test))
 
 # Đánh giá mô hình
 y_pred = ann_model.predict(X_test)
 mse = np.mean((y_pred - y_test)**2)
 print(f"Mean Squared Error trên tập kiểm tra: {mse:.6f}")
 
-# 4. Thuật toán di truyền
-class GeneticAlgorithm:
-    def __init__(self, model, scaler_x, scaler_y, pop_size=50, max_gen=100, mutation_rate=0.1):
-        self.model = model
-        self.scaler_x = scaler_x
-        self.scaler_y = scaler_y
-        self.pop_size = pop_size
-        self.max_gen = max_gen
-        self.mutation_rate = mutation_rate
-        
-        # Phạm vi giá trị cho mỗi thông số
-        self.param_ranges = {
-            'Speed': [80, 280],    # Tốc độ (m/min)
-            'Feed': [0.06, 0.21],  # Tốc độ tiến (mm/rev)
-            'DOC': [0.5, 1.0]      # Chiều sâu cắt (mm)
-        }
-        
-    def create_individual(self):
-        """Tạo một cá thể (bộ thông số) ngẫu nhiên"""
-        return [
-            round(random.uniform(self.param_ranges['Speed'][0], self.param_ranges['Speed'][1]), 0),
-            round(random.uniform(self.param_ranges['Feed'][0], self.param_ranges['Feed'][1]), 2),
-            round(random.uniform(self.param_ranges['DOC'][0], self.param_ranges['DOC'][1]), 2)
-        ]
+# 4. Thuật toán di truyền sử dụng các hàm riêng biệt
+
+# Phạm vi giá trị cho mỗi thông số
+param_ranges = {
+    'Speed': [80, 280],    # Tốc độ (m/min)
+    'Feed': [0.06, 0.21],  # Tốc độ tiến (mm/rev)
+    'DOC': [0.5, 1.0]      # Chiều sâu cắt (mm)
+}
+
+def create_individual():
+    """Tạo một cá thể (bộ thông số) ngẫu nhiên"""
+    return [
+        round(random.uniform(param_ranges['Speed'][0], param_ranges['Speed'][1]), 0),
+        round(random.uniform(param_ranges['Feed'][0], param_ranges['Feed'][1]), 2),
+        round(random.uniform(param_ranges['DOC'][0], param_ranges['DOC'][1]), 2)
+    ]
+
+def create_population(pop_size):
+    """Tạo quần thể ban đầu"""
+    return [create_individual() for _ in range(pop_size)]
+
+def predict_outputs(model, scaler_x, scaler_y, individual):
+    # b. Dự đoán đầu ra từ mô hình ANN
+    # Mỗi cá thể được đưa vào mô hình ANN để dự đoán SR và MRR:
+    """Dự đoán SR và MRR cho một bộ thông số cụ thể"""
+    # Chuẩn hóa thông số đầu vào
+    x_normalized = scaler_x.transform([individual])
+    # Dự đoán đầu ra chuẩn hóa
+    y_normalized = model.predict(x_normalized, verbose=0)
+    # Chuyển đổi ngược để lấy giá trị thực
+    y_actual = scaler_y.inverse_transform(y_normalized)
+    return y_actual[0]  # [SR, MRR]
+
+def calculate_fitness(model, scaler_x, scaler_y, individual, bias=0.5):
+    """Tính độ thích nghi dựa trên SR và MRR với độ thiên vị bias"""
+    sr, mrr = predict_outputs(model, scaler_x, scaler_y, individual)
     
-    def create_population(self):
-        """Tạo quần thể ban đầu"""
-        return [self.create_individual() for _ in range(self.pop_size)]
+    # Chuẩn hóa đầu ra (giả định giá trị tối đa và tối thiểu từ dữ liệu)
+    min_sr, max_sr = min(df['SR']), max(df['SR'])
+    min_mrr, max_mrr = min(df['MRR']), max(df['MRR'])
     
-    def predict_outputs(self, individual):
-        """Dự đoán SR và MRR cho một bộ thông số cụ thể"""
-        # Chuẩn hóa thông số đầu vào
-        x_normalized = self.scaler_x.transform([individual])
-        # Dự đoán đầu ra chuẩn hóa
-        y_normalized = self.model.predict(x_normalized, verbose=0)
-        # Chuyển đổi ngược để lấy giá trị thực
-        y_actual = self.scaler_y.inverse_transform(y_normalized)
-        return y_actual[0]  # [SR, MRR]
+    norm_sr = (max_sr - sr) / (max_sr - min_sr)  # Đảo ngược vì chúng ta muốn SR tối thiểu
+    norm_mrr = (mrr - min_mrr) / (max_mrr - min_mrr)
     
-    def fitness(self, individual, bias=0.5):
-        """Tính độ thích nghi dựa trên SR và MRR với độ thiên vị bias"""
-        sr, mrr = self.predict_outputs(individual)
-        
-        # Chuẩn hóa đầu ra (giả định giá trị tối đa và tối thiểu từ dữ liệu)
-        min_sr, max_sr = min(df['SR']), max(df['SR'])
-        min_mrr, max_mrr = min(df['MRR']), max(df['MRR'])
-        
-        norm_sr = (max_sr - sr) / (max_sr - min_sr)  # Đảo ngược vì chúng ta muốn SR tối thiểu
-        norm_mrr = (mrr - min_mrr) / (max_mrr - min_mrr)
-        
-        # Áp dụng độ thiên vị (bias)
-        # bias=1.0 ưu tiên hoàn toàn cho SR, bias=0.0 ưu tiên hoàn toàn cho MRR
-        fitness_value = bias * norm_sr + (1 - bias) * norm_mrr
-        
-        return fitness_value
+    # Áp dụng độ thiên vị (bias)
+    # bias=1.0 ưu tiên hoàn toàn cho SR, bias=0.0 ưu tiên hoàn toàn cho MRR
+    fitness_value = bias * norm_sr + (1 - bias) * norm_mrr
     
-    def selection(self, population, fitnesses):
-        """Chọn lọc các cá thể theo phương pháp bánh xe roulette"""
-        # Xử lý giá trị đặc biệt trong fitnesses
-        fitnesses = np.array(fitnesses)
-        
-        # Xử lý trường hợp có giá trị âm
-        min_fitness = np.min(fitnesses)
-        if min_fitness < 0:
-            # Dịch chuyển tất cả giá trị lên một mức để đảm bảo không âm
-            fitnesses = fitnesses - min_fitness + 1e-10
-        
-        # Đảm bảo không có giá trị 0
-        fitnesses = np.maximum(fitnesses, 1e-10)
-        
-        # Tính tổng độ thích nghi
-        total_fitness = np.sum(fitnesses)
-        
-        # Tính xác suất lựa chọn và chuẩn hóa để đảm bảo tổng = 1
-        selection_probs = fitnesses / total_fitness
-        
-        # Kiểm tra và sửa nếu tổng không đúng 1 do lỗi số học
-        if not np.isclose(np.sum(selection_probs), 1.0):
-            selection_probs = selection_probs / np.sum(selection_probs)
-        
-        # Đảm bảo không có giá trị NaN hoặc inf
-        if np.isnan(selection_probs).any() or np.isinf(selection_probs).any():
-            selection_probs = np.ones(len(population)) / len(population)
-        
-        # Kiểm tra lần cuối
-        selection_probs = np.nan_to_num(selection_probs)
+    return fitness_value
+
+def selection(population, fitnesses):
+    """Chọn lọc các cá thể theo phương pháp bánh xe roulette"""
+    # Xử lý giá trị đặc biệt trong fitnesses
+    fitnesses = np.array(fitnesses)
+    
+    # Xử lý trường hợp có giá trị âm
+    min_fitness = np.min(fitnesses)
+    if min_fitness < 0:
+        # Dịch chuyển tất cả giá trị lên một mức để đảm bảo không âm
+        fitnesses = fitnesses - min_fitness + 1e-10
+    
+    # Đảm bảo không có giá trị 0
+    fitnesses = np.maximum(fitnesses, 1e-10)
+    
+    # Tính tổng độ thích nghi
+    total_fitness = np.sum(fitnesses)
+    
+    # Tính xác suất lựa chọn và chuẩn hóa để đảm bảo tổng = 1
+    selection_probs = fitnesses / total_fitness
+    
+    # Kiểm tra và sửa nếu tổng không đúng 1 do lỗi số học
+    if not np.isclose(np.sum(selection_probs), 1.0):
         selection_probs = selection_probs / np.sum(selection_probs)
-        
-        # Chọn một cá thể bằng phương pháp bánh xe roulette
-        selected_index = np.random.choice(len(population), p=selection_probs)
-        return population[selected_index]
-        
-    def crossover(self, parent1, parent2):
-        """Lai ghép hai cá thể để tạo ra con cái"""
-        # Lai ghép với một điểm cắt ngẫu nhiên
-        crossover_point = random.randint(1, 2)
-        child = parent1[:crossover_point] + parent2[crossover_point:]
-        return child
     
-    def mutate(self, individual):
-        """Đột biến một cá thể với xác suất mutation_rate"""
-        mutated_individual = individual.copy()  # Tạo bản sao để tránh thay đổi trực tiếp
-        if random.random() < self.mutation_rate:
-            # Chọn ngẫu nhiên một thông số để đột biến
-            param_index = random.randint(0, 2)
-            param_name = list(self.param_ranges.keys())[param_index]
-            
-            # Đột biến thông số bằng cách chọn một giá trị mới trong phạm vi cho phép
-            mutated_individual[param_index] = round(random.uniform(
-                self.param_ranges[param_name][0], 
-                self.param_ranges[param_name][1]
-            ), 2 if param_index > 0 else 0)  # Làm tròn tùy theo loại thông số
-        
-        return mutated_individual
+    # Đảm bảo không có giá trị NaN hoặc inf
+    if np.isnan(selection_probs).any() or np.isinf(selection_probs).any():
+        selection_probs = np.ones(len(population)) / len(population)
     
-    def optimize(self, bias=0.5):
-        """Thực hiện quá trình tối ưu hóa với độ thiên vị bias"""
-        population = self.create_population()
-        best_individual = None
-        best_fitness = -float('inf')
-        best_sr = None
-        best_mrr = None
+    # Kiểm tra lần cuối
+    selection_probs = np.nan_to_num(selection_probs)
+    selection_probs = selection_probs / np.sum(selection_probs)
+    
+    # Chọn một cá thể bằng phương pháp bánh xe roulette
+    selected_index = np.random.choice(len(population), p=selection_probs)
+    return population[selected_index]
+    
+def crossover(parent1, parent2):
+    """Lai ghép hai cá thể để tạo ra con cái"""
+    # Lai ghép với một điểm cắt ngẫu nhiên
+    crossover_point = random.randint(1, 2)
+    child = parent1[:crossover_point] + parent2[crossover_point:]
+    return child
+
+def mutate(individual, mutation_rate):
+    """Đột biến một cá thể với xác suất mutation_rate"""
+    mutated_individual = individual.copy()  # Tạo bản sao để tránh thay đổi trực tiếp
+    if random.random() < mutation_rate:
+        # Chọn ngẫu nhiên một thông số để đột biến
+        param_index = random.randint(0, 2)
+        param_name = list(param_ranges.keys())[param_index]
         
-        for generation in range(self.max_gen):
-            # Đánh giá độ thích nghi của mỗi cá thể
-            fitnesses = [self.fitness(individual, bias) for individual in population]
+        # Đột biến thông số bằng cách chọn một giá trị mới trong phạm vi cho phép
+        mutated_individual[param_index] = round(random.uniform(
+            param_ranges[param_name][0], 
+            param_ranges[param_name][1]
+        ), 2 if param_index > 0 else 0)  # Làm tròn tùy theo loại thông số
+    
+    return mutated_individual
+
+def optimize(model, scaler_x, scaler_y, pop_size=50, max_gen=100, mutation_rate=0.1, bias=0.5):
+    """Thực hiện quá trình tối ưu hóa với độ thiên vị bias"""
+    population = create_population(pop_size)
+    best_individual = None
+    best_fitness = -float('inf')
+    best_sr = None
+    best_mrr = None
+    
+    for generation in range(max_gen):
+        # Đánh giá độ thích nghi của mỗi cá thể
+        fitnesses = [calculate_fitness(model, scaler_x, scaler_y, individual, bias) for individual in population]
+        
+        # Đảm bảo không có giá trị NaN hoặc Inf trong fitnesses
+        fitnesses = np.array(fitnesses)
+        valid_indices = ~np.isnan(fitnesses) & ~np.isinf(fitnesses)
+        
+        if np.any(valid_indices):
+            # Chỉ xét các cá thể có fitness hợp lệ
+            valid_population = [ind for i, ind in enumerate(population) if valid_indices[i]]
+            valid_fitnesses = fitnesses[valid_indices]
             
-            # Đảm bảo không có giá trị NaN hoặc Inf trong fitnesses
-            fitnesses = np.array(fitnesses)
-            valid_indices = ~np.isnan(fitnesses) & ~np.isinf(fitnesses)
-            
-            if np.any(valid_indices):
-                # Chỉ xét các cá thể có fitness hợp lệ
-                valid_population = [ind for i, ind in enumerate(population) if valid_indices[i]]
-                valid_fitnesses = fitnesses[valid_indices]
+            if len(valid_population) > 0:
+                # Tìm cá thể tốt nhất trong thế hệ hiện tại
+                current_best_index = np.argmax(valid_fitnesses)
+                current_best = valid_population[current_best_index]
+                current_best_fitness = valid_fitnesses[current_best_index]
                 
-                if len(valid_population) > 0:
-                    # Tìm cá thể tốt nhất trong thế hệ hiện tại
-                    current_best_index = np.argmax(valid_fitnesses)
-                    current_best = valid_population[current_best_index]
-                    current_best_fitness = valid_fitnesses[current_best_index]
+                # Cập nhật cá thể tốt nhất toàn cục
+                if current_best_fitness > best_fitness:
+                    best_individual = current_best
+                    best_fitness = current_best_fitness
+                    best_sr, best_mrr = predict_outputs(model, scaler_x, scaler_y, best_individual)
+                
+                # Hiển thị thông tin về thế hệ hiện tại
+                if generation % 10 == 0:
+                    sr, mrr = predict_outputs(model, scaler_x, scaler_y, current_best)
+                    print(f"Thế hệ {generation}: Cá thể tốt nhất = {current_best}, SR = {sr:.2f}, MRR = {mrr:.2f}, Độ thích nghi = {current_best_fitness:.4f}")
+                
+                # Tạo thế hệ mới
+                new_population = []
+                
+                # Giữ lại cá thể tốt nhất (elitism)
+                new_population.append(current_best)
+                
+                # Tạo phần còn lại của quần thể mới
+                while len(new_population) < pop_size:
+                    # Sử dụng chỉ những cá thể hợp lệ cho selection
+                    parent1 = selection(valid_population, valid_fitnesses)
+                    parent2 = selection(valid_population, valid_fitnesses)
                     
-                    # Cập nhật cá thể tốt nhất toàn cục
-                    if current_best_fitness > best_fitness:
-                        best_individual = current_best
-                        best_fitness = current_best_fitness
-                        best_sr, best_mrr = self.predict_outputs(best_individual)
+                    child = crossover(parent1, parent2)
+                    child = mutate(child, mutation_rate)
                     
-                    # Hiển thị thông tin về thế hệ hiện tại
-                    if generation % 10 == 0:
-                        sr, mrr = self.predict_outputs(current_best)
-                        print(f"Thế hệ {generation}: Cá thể tốt nhất = {current_best}, SR = {sr:.2f}, MRR = {mrr:.2f}, Độ thích nghi = {current_best_fitness:.4f}")
-                    
-                    # Tạo thế hệ mới
-                    new_population = []
-                    
-                    # Giữ lại cá thể tốt nhất (elitism)
-                    new_population.append(current_best)
-                    
-                    # Tạo phần còn lại của quần thể mới
-                    while len(new_population) < self.pop_size:
-                        # Sử dụng chỉ những cá thể hợp lệ cho selection
-                        parent1 = self.selection(valid_population, valid_fitnesses)
-                        parent2 = self.selection(valid_population, valid_fitnesses)
-                        
-                        child = self.crossover(parent1, parent2)
-                        child = self.mutate(child)
-                        
-                        new_population.append(child)
-                    
-                    population = new_population
-                else:
-                    # Tạo quần thể mới nếu tất cả cá thể đều không hợp lệ
-                    population = self.create_population()
+                    new_population.append(child)
+                
+                population = new_population
             else:
                 # Tạo quần thể mới nếu tất cả cá thể đều không hợp lệ
-                population = self.create_population()
+                population = create_population(pop_size)
+        else:
+            # Tạo quần thể mới nếu tất cả cá thể đều không hợp lệ
+            population = create_population(pop_size)
+    
+    # Đảm bảo luôn có giá trị trả về
+    if best_individual is None:
+        best_individual = create_individual()
+        best_sr, best_mrr = predict_outputs(model, scaler_x, scaler_y, best_individual)
+        best_fitness = calculate_fitness(model, scaler_x, scaler_y, best_individual, bias)
         
-        # Đảm bảo luôn có giá trị trả về
-        if best_individual is None:
-            best_individual = self.create_individual()
-            best_sr, best_mrr = self.predict_outputs(best_individual)
-            best_fitness = self.fitness(best_individual, bias)
-            
-        return best_individual, best_sr, best_mrr, best_fitness
+    return best_individual, best_sr, best_mrr, best_fitness
 
 # 5. Chạy thuật toán di truyền với các giá trị bias khác nhau
-ga = GeneticAlgorithm(ann_model, x_scaler, y_scaler, pop_size=100, max_gen=100, mutation_rate=0.15)
+# Thiết lập tham số cho thuật toán di truyền
+pop_size = 100
+max_gen = 100
+mutation_rate = 0.15
 
 bias_values = {
     "100% bias cho SR": 1.0,  # Tập trung hoàn toàn vào tối thiểu SR
@@ -245,12 +242,12 @@ print("\n=== KẾT QUẢ TỐI ƯU HÓA VỚI CÁC GIÁ TRỊ BIAS KHÁC NHAU ==
 
 for label, bias in bias_values.items():
     print(f"Đang tối ưu hóa với {label} (bias = {bias})...")
-    best_params, best_sr, best_mrr, best_fitness = ga.optimize(bias)
+    best_params, best_sr, best_mrr, best_fitness = optimize(ann_model, x_scaler, y_scaler, pop_size, max_gen, mutation_rate, bias)
     
     results[label] = {
-        "Tốc độ (m/min)": best_params[0],
-        "Tốc độ tiến (mm/rev)": best_params[1],
-        "Chiều sâu cắt (mm)": best_params[2],
+        "Speed": best_params[0],
+        "Feed": best_params[1],
+        "DOC": best_params[2],
         "Độ nhám bề mặt (SR)": best_sr,
         "Tốc độ loại bỏ vật liệu (MRR)": best_mrr,
         "Độ thích nghi": best_fitness
