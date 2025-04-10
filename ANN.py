@@ -1,6 +1,6 @@
 import numpy as np
 import pandas as pd
-import matplotlib.pyplot as plt
+# import matplotlib.pyplot as plt
 from sklearn.preprocessing import MinMaxScaler
 from sklearn.model_selection import train_test_split
 from tensorflow.keras.models import Sequential
@@ -305,6 +305,6 @@ ax2.set_ylabel('Tốc độ loại bỏ vật liệu (MRR)')
 ax2.set_title('MRR tối ưu theo độ thiên vị')
 ax2.grid(True)
 
-plt.tight_layout()
-plt.savefig('optimization_results.png')
-plt.show()
+# plt.tight_layout()
+# plt.savefig('optimization_results.png')
+# plt.show()
